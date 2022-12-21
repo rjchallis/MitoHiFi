@@ -57,6 +57,11 @@ RUN curl -L https://github.com/chhylp123/hifiasm/archive/refs/tags/0.16.1.tar.gz
     && python2 /usr/local/src/get-pip.py \
     && python2 -m pip --no-cache-dir install biopython==1.70
 
+# /opt/MitoFinder
+RUN git clone https://github.com/RemiAllio/MitoFinder.git \
+    && cd MitoFinder \
+    && ./install.sh
+
 RUN mkdir -p /opt/wrappers
 
 COPY mitos_wrapper.sh /opt/wrappers/runmitos.py
@@ -93,3 +98,9 @@ WORKDIR /tmp
 ENV CONDA_DIR=/opt/conda
 
 ENV PATH /opt/wrappers:/opt/hifiasm-0.16.1/:/opt/MitoHiFi/:/opt/minimap2-2.24_x64-linux/:${PATH}
+
+USER root
+
+RUN chmod 755 /opt/MitoFinder/*
+
+USER mu

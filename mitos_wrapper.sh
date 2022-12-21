@@ -1,8 +1,8 @@
 #!/bin/bash
 
 (
-eval "$($CONDA_DIR/bin/conda shell.bash hook)"
+eval "$(/opt/conda/bin/conda shell.bash hook)"
 conda activate mitos_env &&
-PYTHONPATH= $CONDA_DIR/envs/mitos_env/bin/runmitos.py "$@"
+PYTHONPATH= /opt/conda/envs/mitos_env/bin/runmitos.py "$@"
 conda deactivate
 )
