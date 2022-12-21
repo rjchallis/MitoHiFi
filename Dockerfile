@@ -15,6 +15,7 @@ RUN apt-get -qq -y update \
     git \
     infernal \
     libopenjp2-7 \
+    libtiff5 \
     libz-dev \
     mafft \
     ncbi-blast+ \
@@ -25,76 +26,70 @@ RUN apt-get -qq -y update \
     vim \
     && rm -rf /var/lib/apt/lists/*
 
-RUN umask 022
+WORKDIR /opt
 
-WORKDIR /usr/local/bin
-
-RUN ln -s /usr/bin/python3 python
-
-WORKDIR /tmp
-
+# /opt/minimap2-2.24_x64-linux
 RUN curl -L https://github.com/lh3/minimap2/releases/download/v2.24/minimap2-2.24_x64-linux.tar.bz2 \
-    | tar -jxvf - \
-    && mv ./minimap2-2.24_x64-linux/minimap2 /bin/ \
-    && rm -r /tmp/*
+    | tar -jxvf -
 
-WORKDIR /bin
-
-RUN git clone https://github.com/marcelauliano/MitoHiFi.git
-
-RUN wget https://github.com/chhylp123/hifiasm/archive/refs/tags/0.16.1.tar.gz \
-    && wget -P ~/.local/lib https://bootstrap.pypa.io/pip/2.7/get-pip.py \
-    && python2 ~/.local/lib/get-pip.py \
-    && python2 -m pip install biopython==1.70 \
-    && tar -xzvf 0.16.1.tar.gz \
-    && cd hifiasm-0.16.1 && make
-
-RUN echo "#!/usr/bin/env python3" | cat - /bin/MitoHiFi/mitohifi.py | \
-    tee /bin/MitoHiFi/mitohifi.py
-RUN echo "#!/usr/bin/env python3" | cat - /bin/MitoHiFi/findFrameShifts.py | \
-    tee /bin/MitoHiFi/findFrameShifts.py
-RUN echo "#!/usr/bin/env python3" | cat - /bin/MitoHiFi/fixContigHeaders.py | \
-    tee /bin/MitoHiFi/fixContigHeaders.py
-
-RUN mkdir /bin/wrappers
-
-COPY mitos_wrapper.sh /bin/wrappers/runmitos.py
-
-COPY mitofinder_wrapper.sh /bin/wrappers/mitofinder
-
-RUN chmod -R 755 /bin
-
-RUN useradd -m mu
-
-USER mu
-
-RUN python3 -m pip --no-cache-dir install --upgrade pip
-
-RUN python3 -m pip install \
-    bcbio-gff \
-    biopython \
-    dna-features-viewer \
-    entrezpy \
-    matplotlib \
+# /opt/MitoHiFi
+RUN git clone https://github.com/marcelauliano/MitoHiFi.git \
+    && cd MitoHiFi \
+    && chmod +x *.py \
+    && sed -i '1i#!/usr/bin/env python3' mitohifi.py findFrameShifts.py fixContigHeaders.py \
+    && sed -i '1 s/python\>/python3/' *.py \
+    && sed -i 's/"MITOS\/data"/"\/opt\/databases"/' parallel_annotation_mitos.py \
+    && pip3 --no-cache-dir install --upgrade pip \
+    && pip3 --no-cache-dir install biopython \
     pandas \
-    Pillow
+    Pillow \
+    matplotlib \
+    entrezpy \
+    dna_features_viewer \
+    bcbio-gff
 
-WORKDIR /tmp
+# /opt/hifiasm-0.16.1
+RUN curl -L https://github.com/chhylp123/hifiasm/archive/refs/tags/0.16.1.tar.gz \
+    | tar -xzvf - \
+    && cd hifiasm-0.16.1 \
+    && make \
+    && wget -P /usr/local/src https://bootstrap.pypa.io/pip/2.7/get-pip.py \
+    && python2 /usr/local/src/get-pip.py \
+    && python2 -m pip --no-cache-dir install biopython==1.70
 
-RUN wget -q https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh \
-    && printf '\nyes\n\n' | bash Miniconda3-latest-Linux-x86_64.sh \
-    && rm -r /tmp/*
+RUN mkdir -p /opt/wrappers
 
-ENV CONDA_DIR=/home/mu/miniconda3
+COPY mitos_wrapper.sh /opt/wrappers/runmitos.py
 
-RUN echo ". $CONDA_DIR/etc/profile.d/conda.sh" >> ~/.bashrc
+COPY mitofinder_wrapper.sh /opt/wrappers/mitofinder
 
-ENV PATH /bin/wrappers:/bin/MitoHiFi:/bin/hifiasm-0.16.1:${PATH}
+RUN chmod -R 755 /opt/wrappers
 
-RUN $CONDA_DIR/bin/conda install -n base conda-libmamba-solver
+ARG CONDA_DIR=/opt/conda
+
+RUN wget -P /usr/local/src https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh \
+    && bash /usr/local/src/Miniconda3-latest-Linux-x86_64.sh -b -p $CONDA_DIR \
+    && $CONDA_DIR/bin/conda install -n base conda-libmamba-solver
 
 RUN $CONDA_DIR/bin/conda create -n mitos_env --experimental-solver=libmamba -c bioconda -y mitos
 
 RUN $CONDA_DIR/bin/conda create -n mitofinder_env --experimental-solver=libmamba -c bioconda -c conda-forge -y mitofinder
 
 RUN $CONDA_DIR/bin/conda clean -a
+
+RUN mkdir -p /opt/databases
+
+WORKDIR /opt/databases
+
+RUN curl -L https://zenodo.org/record/4284483/files/refseq89m.tar.bz2?download=1 | tar -jxvf - \
+    && curl -L https://zenodo.org/record/4284483/files/refseq89f.tar.bz2?download=1 | tar -jxvf -
+
+RUN useradd -m mu
+
+USER mu
+
+WORKDIR /tmp
+
+ENV CONDA_DIR=/opt/conda
+
+ENV PATH /opt/wrappers:/opt/hifiasm-0.16.1/:/opt/MitoHiFi/:/opt/minimap2-2.24_x64-linux/:${PATH}
